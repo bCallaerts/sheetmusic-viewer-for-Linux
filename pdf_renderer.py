@@ -3,6 +3,7 @@ import os
 import json
 import io
 from kivy.core.image import Image as CoreImage
+import math
 
 PAGE_SETUP_FOLDER = "page_setups"
 if not os.path.exists(PAGE_SETUP_FOLDER):
@@ -51,11 +52,59 @@ class PDFObject:
         if page_number in self.page_setups:
             self.page_setups[page_number][key] = value
     
+    def set_annotations(self, page_number, annotations):
+        page_number = str(page_number)
+        if self.get_value(page_number, 'rotation', 0) != 0:
+            # Rotate annotations to match original file orientation
+            rotated_annotations = []
+            rotation = self.get_value(page_number, 'rotation', 0)
+            for ann in annotations:
+                if 'points' in ann:
+                    rotated_points = []
+                    for i in range(0, len(ann['points']), 2):
+                        x, y = ann['points'][i]-0.5, ann['points'][i + 1]-0.5  # Center around (0,0)
+                        # Rotate point
+                        angle = math.radians(rotation)
+                        # Rotate around (0,0)
+                        x_rot = x * math.cos(angle) - y * math.sin(angle) + 0.5
+                        y_rot = x * math.sin(angle) + y * math.cos(angle) + 0.5
+                        rotated_points.extend([x_rot, y_rot])
+                    ann_copy = ann.copy()
+                    ann_copy['points'] = rotated_points
+                    rotated_annotations.append(ann_copy)
+                else:
+                    rotated_annotations.append(ann)
+            annotations = rotated_annotations
+        if page_number in self.page_setups:
+            self.page_setups[page_number]['annotations'] = annotations
+    
     def get_value(self, page_number, key, default=None):
         return self.page_setups.get(str(page_number), {}).get(key, default)
     
     def get_annotations(self, page_number):
-        return self.page_setups.get(str(page_number), {}).get('annotations', [])
+        anns = self.page_setups.get(str(page_number), {}).get('annotations', [])
+        rotation = self.get_value(page_number, 'rotation', 0)
+        if rotation == 0:
+            return anns
+        # Rotate annotations back to match current rotation
+        anns_rotated = []
+        for ann in anns:
+            if 'points' in ann:
+                rotated_points = []
+                for i in range(0, len(ann['points']), 2):
+                    x, y = ann['points'][i]-0.5, ann['points'][i + 1]-0.5  # Center around (0,0)
+                    # Rotate point
+                    angle = -math.radians(rotation)
+                    # Rotate around (0,0)
+                    x_rot = x * math.cos(angle) - y * math.sin(angle) + 0.5
+                    y_rot = x * math.sin(angle) + y * math.cos(angle) + 0.5
+                    rotated_points.extend([x_rot, y_rot])
+                ann_copy = ann.copy()
+                ann_copy['points'] = rotated_points
+                anns_rotated.append(ann_copy)
+            else:
+                anns_rotated.append(ann)
+        return anns_rotated
     
     def adjust_zoom(self, page_number, factor):
         if not self.doc:

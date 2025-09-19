@@ -6,7 +6,6 @@ class AnnotationWidget(Widget):
     drawing = BooleanProperty(False)
     line_color = ListProperty([1, 0, 0, 1])
     lines = ListProperty([])  # Altijd relatieve coordinaten opslaan
-    scatter = ObjectProperty(None)
 
     def _rel_to_abs(self, points):
         # Zet relatieve (tussen 0 en 1) om naar actuele widget-pixels
@@ -34,7 +33,7 @@ class AnnotationWidget(Widget):
         local_pos = self.to_local(*touch.pos)
         with self.canvas:
             Color(*self.line_color)
-            touch.ud['line'] = Line(points=(local_pos[0], local_pos[1]), width=2)
+            touch.ud['line'] = Line(points=[local_pos[0], local_pos[1]], width=2)
         rel_points = self._abs_to_rel(touch.ud['line'].points)
         self.lines.append({'points': rel_points, 'color': self.line_color[:]})
         return True
@@ -61,8 +60,11 @@ class AnnotationWidget(Widget):
     def load_lines(self, lines):
         self.canvas.clear()
         self.lines = []
-        for line in lines:
-            with self.canvas:
+        if len(lines) == 0:
+            return
+        with self.canvas:
+            for line in lines:
+            
                 Color(*line['color'])
                 abs_points = self._rel_to_abs(line['points'])
                 Line(points=abs_points, width=2)

@@ -1,4 +1,5 @@
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.gridlayout import GridLayout
 from kivy.uix.scatter import Scatter
 from kivy.uix.image import Image
 from kivy.uix.button import Button
@@ -14,35 +15,34 @@ from annotation_widget import AnnotationWidget
 from annotation_storage import AnnotationStorage
 from file_selector import open_pdf_filechooser
 
+DEFAULT_ZOOM = 1.0
+DEFAULT_ROTATION = 0
+
 class PDFViewerUI(FloatLayout):
-    buttons_visible = BooleanProperty(True)
-    pencil_mode = BooleanProperty(False)
-    draw_color = ListProperty([1, 0, 0, 1])
-    current_zoom = 1.0
-    current_rotation = 0
+    
 
     def __init__(self, pdf_renderer, page_navigator, **kwargs):
         super().__init__(**kwargs)
         self.pdf_renderer = pdf_renderer
         self.page_navigator = page_navigator
-        self.page_settings = PageSettings()
+        # self.page_settings = PageSettings()
         self.annotation_storage = AnnotationStorage()
         self.filepath = None
         self.color_popup = None
+        self.buttons_visible = BooleanProperty(True)
+        self.pencil_mode = BooleanProperty(False)
+        self.draw_color = ListProperty([1, 0, 0, 1])
 
         self.scatter = Scatter(size_hint=(None, None), do_rotation=False,
                                do_translation=False, do_scale=False)
         self.img_widget = Image()
         self.annotation_widget = AnnotationWidget()
-        self.annotation_widget.scatter = self.scatter
+        # self.annotation_widget.scatter = self.scatter
         self.scatter.add_widget(self.img_widget)
         self.scatter.add_widget(self.annotation_widget)
         self.add_widget(self.scatter)
 
-        self.button_bar_container = BoxLayout(orientation='horizontal',
-                                              size_hint=(1, None),
-                                              height=80,
-                                              pos_hint={'x': 0, 'y': 0})
+        self.button_bar_container = GridLayout(cols=4, size_hint=(2, None), height=100, pos_hint={'x': 0, 'y': 0})
         self.add_widget(self.button_bar_container)
 
         self.create_buttons()
@@ -75,23 +75,26 @@ class PDFViewerUI(FloatLayout):
 
         self.button_bar_container.clear_widgets()
         for label, cb in top_buttons:
-            btn = Button(text=label, size_hint_x=None, width=120)
+            btn = Button(text=label, size_hint_x=None, width=200)
             btn.bind(on_release=cb)
             self.button_bar_container.add_widget(btn)
 
         for label, cb in bottom_buttons:
             if label == "Potlood":
                 btn = ToggleButton(text=label, size_hint_x=None,
-                                   width=120, group='tools')
+                                   width=200, group='tools')
                 btn.bind(on_release=cb)
             else:
-                btn = Button(text=label, size_hint_x=None, width=120)
+                btn = Button(text=label, size_hint_x=None, width=200)
                 btn.bind(on_release=cb)
             self.button_bar_container.add_widget(btn)
 
     def toggle_pencil(self, btn):
         self.pencil_mode = btn.state == 'down'
         self.annotation_widget.drawing = self.pencil_mode
+
+        if not self.pencil_mode:
+            self.save_annotations_for_page()
 
     def open_pdf(self, instance):
         open_pdf_filechooser(self.load_pdf)
@@ -109,11 +112,11 @@ class PDFViewerUI(FloatLayout):
         if not self.filepath or not self.pdf_renderer.doc:
             return
         zoom = self.fit_page_to_widget(self.page_navigator.current_page)
-        self.current_zoom = zoom
-        self.page_settings.set(self.filepath, self.page_navigator.current_page,
-                               self.current_zoom, self.current_rotation)
+        # self.current_zoom = zoom
+        # self.page_settings.set(self.filepath, self.page_navigator.current_page,
+        #                        self.current_zoom, self.current_rotation)
         self.show_page(self.page_navigator.current_page)
-        self.load_annotations_for_page(self.page_navigator.current_page)  # Belangrijk!
+        # self.load_annotations_for_page(self.page_navigator.current_page)  # Belangrijk!
 
     def fit_page_to_widget(self, page_number):
         if not self.filepath or not self.pdf_renderer.doc:
@@ -131,9 +134,9 @@ class PDFViewerUI(FloatLayout):
         return scale
 
     def show_page(self, page_number, *args):
-        result = self.pdf_renderer.render_page(page_number,
-                                               zoom=self.current_zoom,
-                                               rotation=self.current_rotation)
+        result = self.pdf_renderer.render_page(page_number)
+                                            #    zoom=self.current_zoom,
+                                            #    rotation=self.current_rotation)
         if result:
             texture, size = result
             self.img_widget.texture = texture
@@ -143,36 +146,25 @@ class PDFViewerUI(FloatLayout):
             self.load_annotations_for_page(page_number)
 
     def on_page_change(self, instance, value):
-        sett = self.page_settings.get(self.filepath, value)
-        self.current_zoom = sett.get("zoom", 1.0)
-        self.current_rotation = sett.get("rotation", 0)
         self.show_page(value)
 
     def on_zoom_in(self):
-        self.adjust_zoom(1.1)
+        self.pdf_renderer.adjust_zoom(self.page_navigator.current_page, 1.1)
+        self.show_page(self.page_navigator.current_page)
 
     def on_zoom_out(self):
-        self.adjust_zoom(1 / 1.1)
-
-    def adjust_zoom(self, factor):
-        self.current_zoom = max(0.1, min(10, self.current_zoom * factor))
-        self.page_settings.set(self.filepath, self.page_navigator.current_page,
-                               self.current_zoom, self.current_rotation)
-        self.page_settings.save()
+        self.pdf_renderer.adjust_zoom(self.page_navigator.current_page, 1 / 1.1)
         self.show_page(self.page_navigator.current_page)
-        self.load_annotations_for_page(self.page_navigator.current_page)  # Herlaad annotaties
 
     def on_rotate(self):
-        self.current_rotation = (self.current_rotation + 90) % 360
-        self.page_settings.set(self.filepath, self.page_navigator.current_page,
-                               self.current_zoom, self.current_rotation)
-        self.page_settings.save()
+        self.pdf_renderer.adjust_rotation(self.page_navigator.current_page, 90)
         self.show_page(self.page_navigator.current_page)
-        self.load_annotations_for_page(self.page_navigator.current_page)  # Herlaad annotaties
+        # self.load_annotations_for_page(self.page_navigator.current_page)  # Herlaad annotaties
 
     def save_all_settings(self):
-        self.save_annotations_for_page()
-        self.page_settings.save()
+        self.pdf_renderer.save()
+        # self.save_annotations_for_page()
+        # self.page_settings.save()
 
     def save_and_quit(self):
         self.save_all_settings()
@@ -181,15 +173,21 @@ class PDFViewerUI(FloatLayout):
     def save_annotations_for_page(self):
         if not self.filepath:
             return
-        page = self.page_navigator.current_page
-        self.annotation_storage.set(self.filepath, page,
+        
+        self.pdf_renderer.set_value(self.page_navigator.current_page,
+                                    'annotations',
                                     self.annotation_widget.lines)
-        self.annotation_storage.save()
+        
+        self.pdf_renderer.save()
+        # page = self.page_navigator.current_page
+        # self.annotation_storage.set(self.filepath, page,
+        #                             self.annotation_widget.lines)
+        # self.annotation_storage.save()
 
     def load_annotations_for_page(self, page_number):
         if not self.filepath:
             return
-        annotations = self.annotation_storage.get(self.filepath, page_number)
+        annotations = self.pdf_renderer.get_annotations(page_number)
         self.annotation_widget.load_lines(annotations)
 
     def open_color_picker(self, instance):
@@ -222,10 +220,8 @@ class PDFViewerUI(FloatLayout):
             self.save_annotations_for_page()
 
     def on_touch_down(self, touch):
-        if self.annotation_widget.drawing and self.annotation_widget.collide_point(*touch.pos):
-            if self.annotation_widget.on_touch_down(touch):
-                return True
-        if self.scatter.collide_point(*touch.pos):
+        # Navigatie en togglen button bar (enkel als niet in tekenmodus)
+        if self.scatter.collide_point(*touch.pos) and not self.annotation_widget.drawing:
             local_x, local_y = self.scatter.to_widget(*touch.pos, relative=True)
             if self.img_widget.texture:
                 img_x = local_x - self.img_widget.x
